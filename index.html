@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GROMACS Molecular Dynamics Manual</title>
+
+<style>
+    body{
+        font-family: Arial, Helvetica, sans-serif;
+        line-height:1.7;
+        margin:0;
+        background:#f5f7fb;
+        color:#222;
+    }
+
+    .container{
+        width:90%;
+        max-width:1200px;
+        margin:auto;
+        padding:40px;
+        background:white;
+        box-shadow:0 0 15px rgba(0,0,0,0.08);
+    }
+
+    h1{
+        text-align:center;
+        color:#0b3d91;
+        border-bottom:3px solid #0b3d91;
+        padding-bottom:10px;
+        margin-bottom:40px;
+    }
+
+    h2{
+        color:#0b3d91;
+        margin-top:40px;
+        border-left:6px solid #0b3d91;
+        padding-left:12px;
+    }
+
+    h3{
+        color:#184fb8;
+    }
+
+    p{
+        text-align:justify;
+    }
+
+    code{
+        background:#eef3ff;
+        color:#c7254e;
+        padding:2px 5px;
+        border-radius:4px;
+    }
+
+    pre{
+        background:#111827;
+        color:#f3f4f6;
+        padding:18px;
+        overflow-x:auto;
+        border-radius:10px;
+        font-size:14px;
+    }
+
+    table{
+        width:100%;
+        border-collapse:collapse;
+        margin-top:20px;
+    }
+
+    table th{
+        background:#0b3d91;
+        color:white;
+        padding:12px;
+        text-align:left;
+    }
+
+    table td{
+        border:1px solid #ddd;
+        padding:10px;
+    }
+
+    ul{
+        margin-left:20px;
+    }
+
+    .note{
+        background:#fff8dc;
+        border-left:5px solid orange;
+        padding:15px;
+        margin:20px 0;
+    }
+
+    .workflow{
+        background:#f1f5ff;
+        padding:20px;
+        border-radius:10px;
+        font-family:monospace;
+        white-space:pre-line;
+    }
+
+    footer{
+        text-align:center;
+        margin-top:50px;
+        color:#666;
+        font-size:14px;
+    }
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>GROMACS Molecular Dynamics Manual</h1>
+
+<p>
+This manual describes the complete workflow for running Molecular Dynamics (MD)
+simulations in GROMACS starting from a <code>molecule.xyz</code> file.
+</p>
+
+<hr>
+
+<h2>1. Software Requirements</h2>
+
+<ul>
+    <li>GROMACS</li>
+    <li>ACPYPE</li>
+    <li>AmberTools</li>
+    <li>OpenBabel (optional)</li>
+</ul>
+
+<h2>2. Starting Structure</h2>
+
+<p>Example XYZ file:</p>
+
+<pre>
+5
+Methane
+C   0.000   0.000   0.000
+H   0.629   0.629   0.629
+H  -0.629  -0.629   0.629
+H   0.629  -0.629  -0.629
+H  -0.629   0.629  -0.629
+</pre>
+
+<hr>
+
+<h2>3. Convert XYZ to PDB</h2>
+
+<pre>
+obabel molecule.xyz -O molecule.pdb
+</pre>
+
+<hr>
+
+<h2>4. Generate Topology Using ACPYPE</h2>
+
+<pre>
+acpype -i molecule.pdb -b MOL
+</pre>
+
+<p>This creates:</p>
+
+<pre>
+MOL.acpype/
+</pre>
+
+<table>
+<tr>
+    <th>File</th>
+    <th>Description</th>
+</tr>
+<tr>
+    <td>MOL_GMX.gro</td>
+    <td>Coordinate file</td>
+</tr>
+<tr>
+    <td>MOL_GMX.top</td>
+    <td>Topology file</td>
+</tr>
+<tr>
+    <td>posre_MOL.itp</td>
+    <td>Position restraints</td>
+</tr>
+</table>
+
+<hr>
+
+<h2>5. Enter Working Directory</h2>
+
+<pre>
+cd MOL.acpype
+</pre>
+
+<hr>
+
+<h2>6. Define Simulation Box</h2>
+
+<pre>
+gmx editconf -f MOL_GMX.gro -o boxed.gro -c -d 1.0 -bt cubic
+</pre>
+
+<ul>
+    <li><code>-c</code> : center molecule</li>
+    <li><code>-d 1.0</code> : 1 nm distance from box edge</li>
+    <li><code>-bt cubic</code> : cubic box</li>
+</ul>
+
+<hr>
+
+<h2>7. Solvate the System</h2>
+
+<pre>
+gmx solvate -cp boxed.gro -cs spc216.gro -o solvated.gro -p MOL_GMX.top
+</pre>
+
+<hr>
+
+<h2>8. Prepare Ion Addition</h2>
+
+<h3>Create ions.mdp</h3>
+
+<pre>
+integrator = steep
+nsteps = 500
+emtol = 1000.0
+emstep = 0.01
+cutoff-scheme = Verlet
+nstlist = 10
+coulombtype = PME
+rcoulomb = 1.0
+rvdw = 1.0
+pbc = xyz
+</pre>
+
+<h3>Generate ions.tpr</h3>
+
+<pre>
+gmx grompp -f ions.mdp -c solvated.gro -p MOL_GMX.top -o ions.tpr
+</pre>
+
+<hr>
+
+<h2>9. Add Counter Ions</h2>
+
+<pre>
+gmx genion -s ions.tpr -o solv_ions.gro -p MOL_GMX.top -pname NA -nname CL -neutral
+</pre>
+
+<p>Select:</p>
+
+<pre>
+SOL
+</pre>
+
+<hr>
+
+<h2>10. Energy Minimization</h2>
+
+<h3>Create em.mdp</h3>
+
+<pre>
+integrator      = steep
+emtol           = 1000.0
+emstep          = 0.01
+nsteps          = 50000
+
+cutoff-scheme   = Verlet
+nstlist         = 10
+
+coulombtype     = PME
+rcoulomb        = 1.0
+rvdw            = 1.0
+
+pbc             = xyz
+</pre>
+
+<h3>Run Energy Minimization</h3>
+
+<pre>
+gmx grompp -f em.mdp -c solv_ions.gro -p MOL_GMX.top -o em.tpr
+
+gmx mdrun -deffnm em
+</pre>
+
+<hr>
+
+<h2>11. NVT Equilibration</h2>
+
+<h3>Create nvt.mdp</h3>
+
+<pre>
+integrator      = md
+dt              = 0.001
+nsteps          = 50000
+
+nstxout         = 1000
+nstvout         = 1000
+nstenergy       = 1000
+nstlog          = 1000
+
+cutoff-scheme   = Verlet
+nstlist         = 10
+
+coulombtype     = PME
+rcoulomb        = 1.0
+rvdw            = 1.0
+
+tcoupl          = V-rescale
+tc-grps         = System
+tau_t           = 0.1
+ref_t           = 300
+
+pcoupl          = no
+
+constraints     = h-bonds
+constraint_algorithm = lincs
+
+pbc             = xyz
+
+gen_vel         = yes
+gen_temp        = 300
+gen_seed        = -1
+</pre>
+
+<h3>Run NVT</h3>
+
+<pre>
+gmx grompp -f nvt.mdp -c em.gro -r em.gro -p MOL_GMX.top -o nvt.tpr
+
+gmx mdrun -deffnm nvt
+</pre>
+
+<hr>
+
+<h2>12. NPT Equilibration</h2>
+
+<h3>Create npt.mdp</h3>
+
+<pre>
+integrator      = md
+dt              = 0.001
+nsteps          = 50000
+
+nstxout         = 1000
+nstvout         = 1000
+nstenergy       = 1000
+nstlog          = 1000
+
+cutoff-scheme   = Verlet
+nstlist         = 10
+
+coulombtype     = PME
+rcoulomb        = 1.0
+rvdw            = 1.0
+
+tcoupl          = V-rescale
+tc-grps         = System
+tau_t           = 0.1
+ref_t           = 300
+
+pcoupl          = Parrinello-Rahman
+pcoupltype      = isotropic
+tau_p           = 2.0
+ref_p           = 1.0
+compressibility = 4.5e-5
+
+constraints     = h-bonds
+constraint_algorithm = lincs
+
+pbc             = xyz
+
+gen_vel         = no
+</pre>
+
+<h3>Run NPT</h3>
+
+<pre>
+gmx grompp -f npt.mdp -c nvt.gro -r nvt.gro -t nvt.cpt -p MOL_GMX.top -o npt.tpr
+
+gmx mdrun -deffnm npt
+</pre>
+
+<hr>
+
+<h2>13. Production MD</h2>
+
+<h3>Create md.mdp</h3>
+
+<pre>
+integrator      = md
+dt              = 0.002
+nsteps          = 500000
+
+nstxout-compressed = 1000
+nstenergy       = 1000
+nstlog          = 1000
+
+cutoff-scheme   = Verlet
+nstlist         = 20
+
+coulombtype     = PME
+rcoulomb        = 1.0
+rvdw            = 1.0
+
+tcoupl          = V-rescale
+tc-grps         = System
+tau_t           = 0.1
+ref_t           = 300
+
+pcoupl          = Parrinello-Rahman
+pcoupltype      = isotropic
+tau_p           = 2.0
+ref_p           = 1.0
+compressibility = 4.5e-5
+
+constraints     = h-bonds
+constraint_algorithm = lincs
+
+pbc             = xyz
+
+gen_vel         = no
+</pre>
+
+<h3>Run Production MD</h3>
+
+<pre>
+gmx grompp -f md.mdp -c npt.gro -t npt.cpt -p MOL_GMX.top -o md.tpr
+
+gmx mdrun -deffnm md
+</pre>
+
+<hr>
+
+<h2>14. Important Output Files</h2>
+
+<table>
+<tr>
+    <th>File</th>
+    <th>Description</th>
+</tr>
+
+<tr>
+    <td>.gro</td>
+    <td>Coordinates</td>
+</tr>
+
+<tr>
+    <td>.trr</td>
+    <td>Full trajectory</td>
+</tr>
+
+<tr>
+    <td>.xtc</td>
+    <td>Compressed trajectory</td>
+</tr>
+
+<tr>
+    <td>.edr</td>
+    <td>Energy file</td>
+</tr>
+
+<tr>
+    <td>.log</td>
+    <td>Simulation log</td>
+</tr>
+
+<tr>
+    <td>.cpt</td>
+    <td>Checkpoint file</td>
+</tr>
+
+<tr>
+    <td>.tpr</td>
+    <td>Portable run input</td>
+</tr>
+
+</table>
+
+<hr>
+
+<h2>15. Basic Analysis</h2>
+
+<h3>RMSD</h3>
+
+<pre>
+gmx rms -s md.tpr -f md.xtc -o rmsd.xvg
+</pre>
+
+<h3>Radius of Gyration</h3>
+
+<pre>
+gmx gyrate -s md.tpr -f md.xtc -o gyrate.xvg
+</pre>
+
+<h3>Energy Analysis</h3>
+
+<pre>
+gmx energy -f md.edr -o energy.xvg
+</pre>
+
+<hr>
+
+<h2>16. Visualization</h2>
+
+<ul>
+    <li>VMD</li>
+    <li>PyMOL</li>
+</ul>
+
+<hr>
+
+<h2>17. Workflow Summary</h2>
+
+<div class="workflow">
+molecule.xyz
+↓
+molecule.pdb
+↓
+ACPYPE topology generation
+↓
+Simulation box creation
+↓
+Solvation
+↓
+Ion addition
+↓
+Energy minimization
+↓
+NVT equilibration
+↓
+NPT equilibration
+↓
+Production MD
+↓
+Trajectory analysis
+</div>
+
+<footer>
+Generated Manual for GROMACS Molecular Dynamics Workflow
+</footer>
+
+</div>
+
+</body>
+</html>
